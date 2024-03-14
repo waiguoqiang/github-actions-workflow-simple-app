@@ -33,7 +33,7 @@ jobs:
           # Container registry username
           username: ${{ env.AZURE_CONTAINER_REGISTRY_NAME }}
           # Container registry password
-          password: ${{ env.AZURE_CONTAINER_REGISTRY_PASSWORD }}
+          password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
           # Container registry server url
           login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
 
