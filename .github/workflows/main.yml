@@ -1,0 +1,110 @@
+name: Build and Deploy to Azure
+
+env:
+  AZURE_CONTAINER_REGISTRY_NAME: "kunhong"  # set this to the name of your Azure Container Registry
+  AZURE_CONTAINER_REGISTRY: "kunhong.azurecr.io"
+  CONTAINER_NAME: "hello-world"
+  RESOURCE_GROUP: "github-actions-demo-rg"
+  CLUSTER_NAME: "kun-aks-cluster"
+  DEPLOYMENT_MANIFEST_PATH: "kubernetes"
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch: # manually trigger
+
+permissions:
+  contents: read
+
+jobs:
+  buildImage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.2
+
+      - name: Docker Setup Buildx
+        uses: docker/setup-buildx-action@v3.1.0
+
+      - name: Azure Container Registry Login
+        uses: Azure/docker-login@v1
+        with:
+          # Container registry username
+          username: ${{ env.AZURE_CONTAINER_REGISTRY_NAME }}
+          # Container registry password
+          password: ${{ env.AZURE_CONTAINER_REGISTRY_PASSWORD }}
+          # Container registry server url
+          login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Docker build and push
+        uses: cloudposse/github-action-docker-build-push@1.15.0
+        with:
+          push: true
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.CONTAINER_NAME }}:${{ github.sha }}
+          file: ./Dockerfile
+          
+
+  deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+
+    environment: Production
+    needs: [buildImage]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup kubelogin
+        uses: Azure/use-kubelogin@v1
+
+      - name: Azure Kubernetes set context
+        uses: Azure/aks-set-context@v3
+        with:
+          # Resource Group Name
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          # AKS Cluster Name
+          cluster-name: ${{ env.CLUSTER_NAME }}
+          # Get cluster admin credentials. Values: true or false
+          admin: 'false'
+          # Enables kubelogin for non-admin user scenario. Values: true or false
+          use-kubelogin: 'true'
+
+      # Substitute environment variables in a file
+      - name: envsubst-action
+        uses: danielr1996/envsubst-action@1.1.0
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          AZURE_CONTAINER_REGISTRY_NAME: ${{ env.AZURE_CONTAINER_REGISTRY_NAME }}
+          AZURE_CONTAINER_REGISTRY: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        with:
+          # File to run substitutions on
+          input: 
+            ${{ env.DEPLOYMENT_MANIFEST_PATH }}/hello-world-deployment.yaml
+          # File to write result to
+          output: 
+            hello-world-deployment.yaml
+
+      # Deploys application based on given manifest file
+      - name: Deploys application
+        uses: Azure/k8s-deploy@v4
+        with:
+          action: deploy
+          manifests: |
+            hello-world-deployment.yaml
+            ${{ env.DEPLOYMENT_MANIFEST_PATH }}/hello-world-service.yaml
+          images: |
+            ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.CONTAINER_NAME }}:${{ github.sha }}
+          
