@@ -37,11 +37,12 @@ jobs:
           # Container registry server url
           login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
 
-      - name: Docker build and push
-        uses: cloudposse/github-action-docker-build-push@1.15.0
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5.2.0
         with:
           push: true
           tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.CONTAINER_NAME }}:${{ github.sha }}
+#          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/test-app:latest
           file: ./Dockerfile
           
 
